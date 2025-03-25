@@ -15,4 +15,9 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
             locationDao.insert(location)
         }
     }
+    fun deleteLocation(location: Location) {
+        viewModelScope.launch {
+            locationDao.delete(location)
+        }
+    }
 }
