@@ -20,7 +20,7 @@ class RainStatusActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val isRaining = intent.getBooleanExtra("isRaining", false)  // Get if it's raining from the Intent
+        val isRaining = intent.getBooleanExtra("isRaining", false)
 
         setContent {
             RegnetesTheme {
