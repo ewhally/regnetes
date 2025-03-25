@@ -28,6 +28,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import android.Manifest
 import android.content.Intent
+import androidx.work.*
+import java.util.concurrent.TimeUnit
 
 
 class MainActivity : ComponentActivity() {
@@ -55,6 +57,20 @@ class MainActivity : ComponentActivity() {
         }
 
         NotificationHelper.createNotificationChannel(this)
+
+        val workRequest = PeriodicWorkRequestBuilder<WeatherCheckWorker>(2, TimeUnit.MINUTES)
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED) // Only run when internet is available
+                    .build()
+            )
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "WeatherCheckWork",
+            ExistingPeriodicWorkPolicy.KEEP,
+            workRequest
+        )
 
         setContent {
             RegnetesTheme {
@@ -211,8 +227,8 @@ class MainActivity : ComponentActivity() {
             }
             Button(
                 modifier = Modifier
-                    .align(Alignment.CenterHorizontally) // Align button at the bottom center
-                    .fillMaxWidth(), // Make button take full width
+                    .align(Alignment.CenterHorizontally)
+                    .fillMaxWidth(),
                 onClick = {
                     coroutineScope.launch {
                         isLoading = true
@@ -234,11 +250,8 @@ class MainActivity : ComponentActivity() {
                         withContext(Dispatchers.Main) {
                             precipitationResults = results
                             isLoading = false
-
-                            // Determine if it's raining or not
                             val isRaining = rainLocations.isNotEmpty()
 
-                            // Navigate to RainStatusActivity with "isRaining" flag
                             val intent = Intent(context, RainStatusActivity::class.java).apply {
                                 putExtra("isRaining", isRaining)
                             }

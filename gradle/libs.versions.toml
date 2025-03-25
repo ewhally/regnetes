@@ -12,6 +12,7 @@ supportAnnotations = "28.0.0"
 ksp = "2.1.10-1.0.29"
 runtimeLivedata = "1.7.8"
 room = "2.5.2"
+workmanager = "2.8.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -33,6 +34,8 @@ androidx-runtime-livedata = { group = "androidx.compose.runtime", name = "runtim
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "workmanager" }
+
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
