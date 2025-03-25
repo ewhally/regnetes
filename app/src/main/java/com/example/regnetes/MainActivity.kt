@@ -27,12 +27,13 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import android.Manifest
-
+import android.content.Intent
 
 
 class MainActivity : ComponentActivity() {
     private val viewModel: LocationViewModel by viewModels()
 
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -43,7 +44,8 @@ class MainActivity : ComponentActivity() {
             if (ContextCompat.checkSelfPermission(
                     this,
                     Manifest.permission.POST_NOTIFICATIONS
-                ) != PackageManager.PERMISSION_GRANTED) {
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
                 ActivityCompat.requestPermissions(
                     this,
                     arrayOf(Manifest.permission.POST_NOTIFICATIONS),
@@ -56,140 +58,196 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             RegnetesTheme {
-                val locations by viewModel.allLocations.observeAsState(emptyList())
-                Column(modifier = Modifier.fillMaxSize()) {
-                    LocationScreen(
-                        locations = locations,
-                        onAddLocation = { name ->
-                            viewModel.insertLocation(Location(name = name))
-                        },
-                        onDeleteLocation = { location ->
-                            viewModel.deleteLocation(location)
-                        }
+                Scaffold(
+                    topBar = {
+                        TopAppBar(
+                            title = { Text("RegnetEs") }
+                        )
+                    }
+                ) { paddingValues ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(paddingValues)
+                    ) {
+                        val locations by viewModel.allLocations.observeAsState(emptyList())
+
+                        LocationScreen(
+                            locations = locations,
+                            onAddLocation = { name -> viewModel.insertLocation(Location(name = name)) },
+                            onDeleteLocation = { location -> viewModel.deleteLocation(location) }
+                        )
+
+                        WeatherSection(locations = locations)
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun LocationScreen(
+        locations: List<Location>,
+        onAddLocation: (String) -> Unit,
+        onDeleteLocation: (Location) -> Unit
+    ) {
+        var text by remember { mutableStateOf("") }
+
+        Column(modifier = Modifier.padding(16.dp)) {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                label = { Text("Enter location") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = {
+                    if (text.isNotBlank()) {
+                        onAddLocation(text)
+                        text = ""
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Add Location")
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                items(locations) { location ->
+                    LocationItem(
+                        location = location,
+                        onDelete = { onDeleteLocation(location) }
                     )
-                    WeatherSection(locations = locations)
                 }
             }
         }
     }
-}
 
-@Composable
-fun LocationScreen(
-    locations: List<Location>,
-    onAddLocation: (String) -> Unit,
-    onDeleteLocation: (Location) -> Unit
-) {
-    var text by remember { mutableStateOf("") }
-
-    Column(modifier = Modifier.padding(16.dp)) {
-        OutlinedTextField(
-            value = text,
-            onValueChange = { text = it },
-            label = { Text("Enter location") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(
-            onClick = {
-                if (text.isNotBlank()) {
-                    onAddLocation(text)
-                    text = ""
-                }
-            },
-            modifier = Modifier.fillMaxWidth()
+    @Composable
+    fun LocationItem(location: Location, onDelete: () -> Unit) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Add Location")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        LazyColumn(modifier = Modifier.fillMaxWidth()) {
-            items(locations) { location ->
-                LocationItem(
-                    location = location,
-                    onDelete = { onDeleteLocation(location) }
-                )
+            Text(
+                text = location.name,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Default.Delete, contentDescription = "Delete")
             }
         }
     }
-}
 
-@Composable
-fun LocationItem(location: Location, onDelete: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = location.name,
-            style = MaterialTheme.typography.bodyLarge
-        )
-        IconButton(onClick = onDelete) {
-            Icon(Icons.Default.Delete, contentDescription = "Delete")
-        }
-    }
-}
+    @Composable
+    fun WeatherSection(locations: List<Location>) {
+        val context = LocalContext.current
 
-@Composable
-fun WeatherSection(locations: List<Location>) {
-    val context = LocalContext.current
+        var precipitationResults by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
+        var isLoading by remember { mutableStateOf(false) }
+        val coroutineScope = rememberCoroutineScope()
+        val weatherRepository = WeatherRepository()
 
-    var precipitationResults by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
-    var isLoading by remember { mutableStateOf(false) }
-    val coroutineScope = rememberCoroutineScope()
-    val weatherRepository = WeatherRepository()
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Button(
+                onClick = {
+                    coroutineScope.launch {
+                        isLoading = true
+                        val results = mutableMapOf<String, Double>()
+                        val rainLocations = mutableListOf<String>()
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Button(
-            onClick = {
-                coroutineScope.launch {
-                    isLoading = true
-                    val results = mutableMapOf<String, Double>()
-                    val rainLocations = mutableListOf<String>()
+                        for (location in locations) {
+                            val locationName = location.name.trim()
+                            val precipitation =
+                                weatherRepository.fetchWeatherForLocation(locationName) ?: 0.0
 
-                    for (location in locations) {
-                        val locationName = location.name.trim()
-                        val precipitation = weatherRepository.fetchWeatherForLocation(locationName) ?: 0.0
+                            results[locationName] = precipitation
 
-                        results[locationName] = precipitation
-
-                        if (precipitation > 2.5) {
-                            rainLocations.add(locationName)
+                            if (precipitation > 2.5) {
+                                rainLocations.add(locationName)
+                            }
                         }
-                    }
 
-                    withContext(Dispatchers.Main) {
-                        precipitationResults = results
-                        isLoading = false
+                        withContext(Dispatchers.Main) {
+                            precipitationResults = results
+                            isLoading = false
 
-                        if (rainLocations.isNotEmpty()) {
-                            val message = rainLocations.joinToString(", ") { "$it is raining today" }
-                            NotificationHelper.showNotification(context, "Weather Alert", message)
+                            if (rainLocations.isNotEmpty()) {
+                                val message =
+                                    rainLocations.joinToString(", ") { "$it is raining today" }
+                                NotificationHelper.showNotification(
+                                    context,
+                                    "Weather Alert",
+                                    message
+                                )
+                            }
                         }
                     }
                 }
+            ) {
+                Text("Fetch Weather")
             }
-        ) {
-            Text("Fetch Weather")
-        }
 
-        Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-        if (isLoading) {
-            Text("Loading...")
-        } else {
-            precipitationResults.forEach { (locationName, precipitation) ->
-                val status = if (precipitation > 2.5) "It is raining today" else "No rain"
-                Text("$locationName: $status ($precipitation mm)")
+            if (isLoading) {
+                Text("Loading...")
+            } else {
+                precipitationResults.forEach { (locationName, precipitation) ->
+                    val status = if (precipitation > 2.5) "raining today" else "No rain"
+                    Text("$locationName: $status ")
+                }
+            }
+            Button(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally) // Align button at the bottom center
+                    .fillMaxWidth(), // Make button take full width
+                onClick = {
+                    coroutineScope.launch {
+                        isLoading = true
+                        val results = mutableMapOf<String, Double>()
+                        val rainLocations = mutableListOf<String>()
+
+                        for (location in locations) {
+                            val locationName = location.name.trim()
+                            val precipitation =
+                                weatherRepository.fetchWeatherForLocation(locationName) ?: 0.0
+
+                            results[locationName] = precipitation
+
+                            if (precipitation > 2.5) {
+                                rainLocations.add(locationName)
+                            }
+                        }
+
+                        withContext(Dispatchers.Main) {
+                            precipitationResults = results
+                            isLoading = false
+
+                            // Determine if it's raining or not
+                            val isRaining = rainLocations.isNotEmpty()
+
+                            // Navigate to RainStatusActivity with "isRaining" flag
+                            val intent = Intent(context, RainStatusActivity::class.java).apply {
+                                putExtra("isRaining", isRaining)
+                            }
+                            context.startActivity(intent)
+                        }
+                    }
+                }
+            ) {
+                Text("Check Rain Status")
             }
         }
     }
