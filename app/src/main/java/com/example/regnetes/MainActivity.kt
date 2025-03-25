@@ -17,6 +17,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.regnetes.entity.Location
 import com.example.regnetes.ui.theme.RegnetesTheme
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val viewModel: LocationViewModel by viewModels()
@@ -26,15 +29,18 @@ class MainActivity : ComponentActivity() {
         setContent {
             RegnetesTheme {
                 val locations by viewModel.allLocations.observeAsState(emptyList())
-                LocationScreen(
-                    locations = locations,
-                    onAddLocation = { name ->
-                        viewModel.insertLocation(Location(name = name))
-                    },
-                    onDeleteLocation = { location ->
-                        viewModel.deleteLocation(location)
-                    }
-                )
+                Column(modifier = Modifier.fillMaxSize()) {
+                    LocationScreen(
+                        locations = locations,
+                        onAddLocation = { name ->
+                            viewModel.insertLocation(Location(name = name))
+                        },
+                        onDeleteLocation = { location ->
+                            viewModel.deleteLocation(location)
+                        }
+                    )
+                    WeatherSection(locations = locations)
+                }
             }
         }
     }
@@ -49,7 +55,6 @@ fun LocationScreen(
     var text by remember { mutableStateOf("") }
 
     Column(modifier = Modifier.padding(16.dp)) {
-        // Add location UI
         OutlinedTextField(
             value = text,
             onValueChange = { text = it },
@@ -71,7 +76,6 @@ fun LocationScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Location list
         LazyColumn(modifier = Modifier.fillMaxWidth()) {
             items(locations) { location ->
                 LocationItem(
@@ -98,6 +102,58 @@ fun LocationItem(location: Location, onDelete: () -> Unit) {
         )
         IconButton(onClick = onDelete) {
             Icon(Icons.Default.Delete, contentDescription = "Delete")
+        }
+    }
+}
+
+@Composable
+fun WeatherSection(locations: List<Location>) {
+    var weatherMessages by remember { mutableStateOf<List<String>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+    val weatherRepository = WeatherRepository()
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Button(
+            onClick = {
+                coroutineScope.launch {
+                    isLoading = true
+                    val deferredResults = locations.map { location ->
+                        async {
+                            val precipitation = weatherRepository.fetchWeatherForLocation(location.name)
+                            if (precipitation != null) {
+                                if (precipitation > 5.0) {
+                                    "${location.name} It is raining here today"
+                                } else {
+                                    "${location.name} has no rain"
+                                }
+                            } else {
+                                "${location.name} No data available"
+                            }
+                        }
+                    }
+                    weatherMessages = deferredResults.awaitAll()
+                    isLoading = false
+                }
+            }
+        ) {
+            Text("Check Rain Status")
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+
+        if (isLoading) {
+            Text("Checking weather...")
+        } else {
+            LazyColumn {
+                items(weatherMessages) { message ->
+                    Text(message)
+                }
+            }
         }
     }
 }
