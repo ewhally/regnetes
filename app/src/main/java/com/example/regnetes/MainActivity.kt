@@ -1,4 +1,7 @@
 package com.example.regnetes
+
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -6,26 +9,51 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.regnetes.entity.Location
 import com.example.regnetes.ui.theme.RegnetesTheme
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import android.Manifest
+
+
 
 class MainActivity : ComponentActivity() {
     private val viewModel: LocationViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val REQUEST_CODE_PERMISSION = 1001
+
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    REQUEST_CODE_PERMISSION
+                )
+            }
+        }
+
+        NotificationHelper.createNotificationChannel(this)
+
         setContent {
             RegnetesTheme {
                 val locations by viewModel.allLocations.observeAsState(emptyList())
@@ -108,7 +136,9 @@ fun LocationItem(location: Location, onDelete: () -> Unit) {
 
 @Composable
 fun WeatherSection(locations: List<Location>) {
-    var weatherMessages by remember { mutableStateOf<List<String>>(emptyList()) }
+    val context = LocalContext.current
+
+    var precipitationResults by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var isLoading by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
     val weatherRepository = WeatherRepository()
@@ -123,39 +153,44 @@ fun WeatherSection(locations: List<Location>) {
             onClick = {
                 coroutineScope.launch {
                     isLoading = true
-                    val deferredResults = locations.map { location ->
-                        async {
-                            val precipitation = weatherRepository.fetchWeatherForLocation(location.name)
-                            if (precipitation != null) {
-                                if (precipitation > 5.0) {
-                                    "${location.name} It is raining here today"
-                                } else {
-                                    "${location.name} has no rain"
-                                }
-                            } else {
-                                "${location.name} No data available"
-                            }
+                    val results = mutableMapOf<String, Double>()
+                    val rainLocations = mutableListOf<String>()
+
+                    for (location in locations) {
+                        val locationName = location.name.trim()
+                        val precipitation = weatherRepository.fetchWeatherForLocation(locationName) ?: 0.0
+
+                        results[locationName] = precipitation
+
+                        if (precipitation > 2.5) {
+                            rainLocations.add(locationName)
                         }
                     }
-                    weatherMessages = deferredResults.awaitAll()
-                    isLoading = false
+
+                    withContext(Dispatchers.Main) {
+                        precipitationResults = results
+                        isLoading = false
+
+                        if (rainLocations.isNotEmpty()) {
+                            val message = rainLocations.joinToString(", ") { "$it is raining today" }
+                            NotificationHelper.showNotification(context, "Weather Alert", message)
+                        }
+                    }
                 }
             }
         ) {
-            Text("Check Rain Status")
+            Text("Fetch Weather")
         }
+
         Spacer(modifier = Modifier.height(8.dp))
 
         if (isLoading) {
-            Text("Checking weather...")
+            Text("Loading...")
         } else {
-            LazyColumn {
-                items(weatherMessages) { message ->
-                    Text(message)
-                }
+            precipitationResults.forEach { (locationName, precipitation) ->
+                val status = if (precipitation > 2.5) "It is raining today" else "No rain"
+                Text("$locationName: $status ($precipitation mm)")
             }
         }
     }
 }
-
-
